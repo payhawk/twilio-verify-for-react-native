@@ -276,9 +276,9 @@ class RNTwilioVerifyModule(
 
   private fun convertReadableMapToMap(readableMap: ReadableMap?): Map<String, String>? {
     return readableMap?.let { map ->
-        map.keySetIterator().asSequence().associateWith { key ->
+        map.keySetIterator().asSequence().associateWith { key: String ->
             map.getString(key)
         }
     }
-}
+  }
 }
