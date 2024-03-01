@@ -263,7 +263,7 @@ class RNTwilioVerifyModule(
       factorPayload.getStringValue("identity"),
       factorPayload.getOptStringValue("pushToken"),
       factorPayload.getStringValue("accessToken"),
-      factorPayload.getMap("metadata")
+      convertReadableMapToMap(factorPayload.getMap("metadata"))
     )
 
   private fun toChallengeListPayload(challengeListPayload: ReadableMap) = ChallengeListPayload(
@@ -273,4 +273,12 @@ class RNTwilioVerifyModule(
     mapOrder(challengeListPayload.getString("order")) ?: Asc,
     challengeListPayload.getString("pageToken")
   )
+
+  private fun convertReadableMapToMap(readableMap: ReadableMap?): Map<String, String>? {
+    return readableMap?.let { map ->
+        map.keySetIterator().asSequence().associateWith { key ->
+            map.getString(key)
+        }
+    }
+}
 }
