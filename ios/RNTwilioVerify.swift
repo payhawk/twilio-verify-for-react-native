@@ -188,7 +188,8 @@ private extension RNTwilioVerify {
                           serviceSid: factorPayload["serviceSid"] as! String,
                           identity: factorPayload["identity"] as! String,
                           pushToken: factorPayload["pushToken"] as? String,
-                          accessToken: factorPayload["accessToken"] as! String)
+                          accessToken: factorPayload["accessToken"] as! String,
+                          metadata: factorPayload["metadata"] as? [String: String])
     }
     
     func toChallengeListPayload(challengeListPayload: Dictionary<String, Any>) -> ChallengeListPayload {

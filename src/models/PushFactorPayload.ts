@@ -13,7 +13,8 @@ export class PushFactorPayload implements FactorPayload {
     public serviceSid: string,
     public identity: string,
     public accessToken: string,
-    public pushToken?: string
+    public pushToken?: string,
+    public metadata?: Record<string, string>
   ) {
     this.factorType = FactorType.Push;
   }

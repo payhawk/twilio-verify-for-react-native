@@ -262,7 +262,8 @@ class RNTwilioVerifyModule(
       factorPayload.getStringValue("serviceSid"),
       factorPayload.getStringValue("identity"),
       factorPayload.getOptStringValue("pushToken"),
-      factorPayload.getStringValue("accessToken")
+      factorPayload.getStringValue("accessToken"),
+      factorPayload.getMap("metadata")
     )
 
   private fun toChallengeListPayload(challengeListPayload: ReadableMap) = ChallengeListPayload(

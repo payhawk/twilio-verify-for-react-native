@@ -10,4 +10,5 @@ export interface FactorPayload {
   serviceSid: string;
   identity: string;
   factorType: FactorType;
+  metadata?: Record<string, string>;
 }
