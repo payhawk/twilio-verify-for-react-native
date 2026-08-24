@@ -330,8 +330,19 @@ class RNTwilioVerifyModule(
       factorPayload.getStringValue("serviceSid"),
       factorPayload.getStringValue("identity"),
       factorPayload.getOptStringValue("pushToken"),
-      factorPayload.getStringValue("accessToken")
+      factorPayload.getStringValue("accessToken"),
+      toStringMap(factorPayload.getMap("metadata"))
     )
+
+  private fun toStringMap(readableMap: ReadableMap?): Map<String, String>? = readableMap?.let { map ->
+    val iterator = map.keySetIterator()
+    val result = mutableMapOf<String, String>()
+    while (iterator.hasNextKey()) {
+      val key = iterator.nextKey()
+      map.getString(key)?.let { value -> result[key] = value }
+    }
+    result
+  }
 
   private fun toChallengeListPayload(challengeListPayload: ReadableMap) = ChallengeListPayload(
     challengeListPayload.getStringValue("factorSid"),

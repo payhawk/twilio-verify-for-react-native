@@ -35,13 +35,16 @@ export class PushFactorPayload implements FactorPayload {
    * @param accessToken - A valid JWT access token obtained from your backend service.
    * @param pushToken - Optional. The device push notification token (FCM for Android, APNs for iOS).
    *                    Can be omitted if push notifications are not required or will be added later.
+   * @param metadata - Optional. Custom metadata carrying device information, string values only,
+   *                   up to 1024 characters once stringified.
    */
   constructor(
     public friendlyName: string,
     public serviceSid: string,
     public identity: string,
     public accessToken: string,
-    public pushToken?: string
+    public pushToken?: string,
+    public metadata?: Record<string, string>
   ) {
     this.factorType = FactorType.Push;
   }

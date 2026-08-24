@@ -24,4 +24,10 @@ export interface FactorPayload {
 
   /** The type of factor being created (e.g., FactorType.Push) */
   factorType: FactorType;
+
+  /**
+   * Optional. Custom metadata associated with the factor, added by the device to carry device
+   * information. Stringified by the SDK; string values only, up to 1024 characters in total.
+   */
+  metadata?: Record<string, string>;
 }

@@ -10,13 +10,10 @@ const { RNTwilioVerify } = NativeModules;
 
 export default RNTwilioVerify as TwilioVerifyType;
 
-export type { Factor, FactorStatus } from './models/Factor';
-export type {
-  Challenge,
-  ChallengeStatus,
-  ChallengeDetails,
-  Detail,
-} from './models/Challenge';
+export type { Factor } from './models/Factor';
+export { FactorStatus } from './models/Factor';
+export type { Challenge, ChallengeDetails, Detail } from './models/Challenge';
+export { ChallengeStatus } from './models/Challenge';
 export type { ChallengeList, Metadata } from './models/ChallengeList';
 export { PushFactorPayload } from './models/PushFactorPayload';
 export { VerifyPushFactorPayload } from './models/VerifyPushFactorPayload';
