@@ -1,70 +1,150 @@
-import 'react-native-gesture-handler';
+/**
+ * Twilio Verify React Native - Example App
+ *
+ * This app demonstrates how to implement push-based two-factor authentication
+ * using the Twilio Verify SDK for React Native.
+ *
+ * Navigation Structure:
+ * - Factors: List of all verification factors on this device
+ * - Factor: Details of a single factor + its challenges
+ * - Challenge: Approve/Deny a specific authentication challenge
+ * - CreateFactor: Form to create a new verification factor
+ *
+ * Push Notification Flow:
+ * 1. User creates a factor (registers device)
+ * 2. Backend sends authentication challenge via Twilio API
+ * 3. Device receives push notification
+ * 4. User opens notification → navigates to Challenge screen
+ * 5. User approves/denies → response sent back to Twilio
+ * 6. Backend receives webhook with result
+ *
+ * @format
+ */
 
-import * as React from 'react';
-import { NavigationContainer, NavigationContainerRef } from '@react-navigation/native';
 import {
-  createStackNavigator,
-  StackNavigationOptions,
-} from '@react-navigation/stack';
-import TwilioVerify from '@twilio/twilio-verify-for-react-native';
-
-import { Colors } from './constants';
-import type { RootStackParamList } from './types';
-import CreateFactor from './views/CreateFactor';
+  createNativeStackNavigator,
+  type NativeStackNavigationOptions,
+} from '@react-navigation/native-stack';
+import { Colors } from './constants/Colors';
+import {
+  createNavigationContainerRef,
+  NavigationContainer,
+} from '@react-navigation/native';
 import Factors from './views/Factors';
-import Factor from './views/Factor';
-import Challenge from './views/Challenge';
+import { type RootStackParamList } from './types';
 import NotificationService from './push/NotificationService';
-import type { ReceivedNotification } from 'react-native-push-notification';
+import { type ReceivedNotification } from 'react-native-push-notification';
+import { Alert } from 'react-native';
+import TwilioVerify, {
+  type Factor,
+} from '@twilio/twilio-verify-for-react-native';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import FactorView from './views/Factor';
+import ChallengeView from './views/Challenge';
+import CreateFactor from './views/CreateFactor';
 
-const Stack = createStackNavigator<RootStackParamList>();
-const screenOptions: StackNavigationOptions = {
-  headerTitle: 'TwilioVerify',
+declare global {
+  var deviceToken: string;
+}
+
+const screenOptions: NativeStackNavigationOptions = {
+  headerTitle: 'Twilio Verify',
   headerStyle: {
-    backgroundColor: Colors.blue.default,
+    backgroundColor: Colors.primary.main,
   },
-  headerTintColor: Colors.white.default,
-  headerBackTitleVisible: false,
+  headerTintColor: Colors.text.inverse,
+  headerBackButtonDisplayMode: 'minimal',
+  headerTitleStyle: {
+    fontWeight: '600',
+  },
 };
-const navigationRef = React.createRef<NavigationContainerRef>();
 
+const Stack = createNativeStackNavigator<RootStackParamList>();
+
+const navigationRef = createNavigationContainerRef<RootStackParamList>();
+
+/**
+ * Handles incoming push notification with a challenge
+ *
+ * When Twilio sends a push challenge, the notification payload contains:
+ * - challenge_sid: The challenge's unique identifier
+ * - factor_sid: The factor's unique identifier
+ * - type: 'verify_push_challenge'
+ *
+ * This function:
+ * 1. Extracts the challenge and factor SIDs from the notification
+ * 2. Finds the matching factor in local storage
+ * 3. Navigates to the Challenge screen to show the approval UI
+ */
 const showChallenge = async (payload: Record<string, any>) => {
   const challengeSid = payload.challenge_sid;
   const factorSid = payload.factor_sid;
   const type = payload.type;
   if (type === 'verify_push_challenge' && factorSid && challengeSid) {
-    const factor = await (await TwilioVerify.getAllFactors()).find(factor => factor.sid === factorSid)
-    if (factor) {
-      navigationRef.current?.navigate('Challenge', { factor, challengeSid: challengeSid });
+    try {
+      const factors = await TwilioVerify.getAllFactors();
+      const factor: Factor | undefined = factors.find(
+        (f: Factor) => f.sid === factorSid
+      );
+      if (factor) {
+        navigationRef.current?.navigate('Challenge', {
+          factor,
+          challengeSid: challengeSid,
+        });
+      }
+    } catch (error) {
+      console.error('Failed to get factors:', error);
+      Alert.alert('Error', 'Failed to load factor information');
     }
   }
-}
+};
 
 const onRegister = (deviceToken: { os: string; token: string }) => {
-  global.deviceToken = deviceToken.token
-}
+  globalThis.deviceToken = deviceToken.token;
+};
 
-
-const onNotification = (notification: Omit<ReceivedNotification, "userInfo">) => {
+const onNotification = (
+  notification: Omit<ReceivedNotification, 'userInfo'>
+) => {
   if (notification.userInteraction || notification.foreground) {
-    showChallenge(notification.data)
+    showChallenge(notification.data);
   } else {
-    notificationService.localNotification(notification.data)
+    notificationService.localNotification(notification.data);
   }
-}
+};
 
 const notificationService = new NotificationService(onRegister, onNotification);
 
 export default function App() {
-
   return (
-    <NavigationContainer ref={navigationRef}>
-      <Stack.Navigator initialRouteName="Factors" screenOptions={screenOptions}>
-        <Stack.Screen name="Factors" component={Factors} />
-        <Stack.Screen name="CreateFactor" component={CreateFactor} />
-        <Stack.Screen name="Factor" component={Factor} />
-        <Stack.Screen name="Challenge" component={Challenge} />
-      </Stack.Navigator>
-    </NavigationContainer>
+    <GestureHandlerRootView>
+      <NavigationContainer ref={navigationRef}>
+        <Stack.Navigator
+          initialRouteName="Factors"
+          screenOptions={screenOptions}
+        >
+          <Stack.Screen
+            name="Factors"
+            options={{ title: 'Factors' }}
+            component={Factors}
+          />
+          <Stack.Screen
+            name="Factor"
+            options={{ title: 'Factor' }}
+            component={FactorView}
+          />
+          <Stack.Screen
+            name="Challenge"
+            options={{ title: 'Challenge' }}
+            component={ChallengeView}
+          />
+          <Stack.Screen
+            name="CreateFactor"
+            options={{ title: 'Create Factor' }}
+            component={CreateFactor}
+          />
+        </Stack.Navigator>
+      </NavigationContainer>
+    </GestureHandlerRootView>
   );
 }

@@ -48,12 +48,39 @@ private val dateFormatterUTC =
   SimpleDateFormat(dateFormatUTC, Locale.US).apply { timeZone = TimeZone.getTimeZone("UTC") }
 
 class RNTwilioVerifyModule(
-  reactContext: ReactApplicationContext,
-  private val twilioVerify: TwilioVerify = TwilioVerify.Builder(reactContext).build()
+  private val reactContext: ReactApplicationContext
 ) : ReactContextBaseJavaModule(reactContext) {
 
+  private lateinit var twilioVerify: TwilioVerify
+
+  init {
+    initTwilioVerify()
+  }
+
   override fun getName(): String {
-    return "RNTwilioVerify"
+    return NAME
+  }
+
+  private fun initTwilioVerify(promise: Promise? = null) {
+    try {
+      twilioVerify = TwilioVerify.Builder(reactContext).build()
+    } catch (exception: Exception) {
+      promise?.reject("TWILIO_INIT_ERROR", "Failed to initialize TwilioVerify", exception)
+    }
+  }
+
+  private fun isTwilioVerifyInitialized(promise: Promise? = null): Boolean {
+    val initialized = this::twilioVerify.isInitialized
+    if (!initialized) {
+      initTwilioVerify(promise)
+    }
+    return this::twilioVerify.isInitialized
+  }
+
+  @ReactMethod
+  fun configure(options: ReadableMap, promise: Promise) {
+    // keychainQueryMode is iOS-only; no-op on Android
+    promise.resolve(null)
   }
 
   @ReactMethod
@@ -61,6 +88,10 @@ class RNTwilioVerifyModule(
     factorPayload: ReadableMap,
     promise: Promise
   ) {
+    if (!isTwilioVerifyInitialized(promise)) {
+      return
+    }
+
     when (mapType(factorPayload.getString("factorType"))) {
       FactorType.PUSH ->
         twilioVerify.createFactor(
@@ -73,6 +104,10 @@ class RNTwilioVerifyModule(
 
   @ReactMethod
   fun verifyFactor(verifyFactorPayload: ReadableMap, promise: Promise) {
+    if (!isTwilioVerifyInitialized(promise)) {
+      return
+    }
+
     when (mapType(verifyFactorPayload.getString("factorType"))) {
       FactorType.PUSH -> twilioVerify.verifyFactor(
         VerifyPushFactorPayload(verifyFactorPayload.getStringValue("sid")),
@@ -87,6 +122,10 @@ class RNTwilioVerifyModule(
     updateFactorPayload: ReadableMap,
     promise: Promise
   ) {
+    if (!isTwilioVerifyInitialized(promise)) {
+      return
+    }
+
     when (mapType(updateFactorPayload.getString("factorType"))) {
       FactorType.PUSH ->
         twilioVerify.updateFactor(
@@ -100,6 +139,10 @@ class RNTwilioVerifyModule(
 
   @ReactMethod
   fun getAllFactors(promise: Promise) {
+    if (!isTwilioVerifyInitialized(promise)) {
+      return
+    }
+
     twilioVerify.getAllFactors(
       { promise.resolve(toReadableFactorArray(it)) },
       { promise.reject(it) })
@@ -107,6 +150,10 @@ class RNTwilioVerifyModule(
 
   @ReactMethod
   fun deleteFactor(sid: String, promise: Promise) {
+    if (!isTwilioVerifyInitialized(promise)) {
+      return
+    }
+
     twilioVerify.deleteFactor(
       sid,
       { promise.resolve(null) },
@@ -119,6 +166,10 @@ class RNTwilioVerifyModule(
     factorSid: String,
     promise: Promise
   ) {
+    if (!isTwilioVerifyInitialized(promise)) {
+      return
+    }
+
     twilioVerify.getChallenge(
       challengeSid,
       factorSid,
@@ -131,6 +182,10 @@ class RNTwilioVerifyModule(
     challengeListPayload: ReadableMap,
     promise: Promise
   ) {
+    if (!isTwilioVerifyInitialized(promise)) {
+      return
+    }
+
     twilioVerify.getAllChallenges(
       toChallengeListPayload(challengeListPayload),
       { promise.resolve(toReadableMap(it)) },
@@ -139,6 +194,10 @@ class RNTwilioVerifyModule(
 
   @ReactMethod
   fun updateChallenge(updateChallengePayload: ReadableMap, promise: Promise) {
+    if (!isTwilioVerifyInitialized(promise)) {
+      return
+    }
+
     when (mapType(updateChallengePayload.getString("factorType"))) {
       FactorType.PUSH ->
         toUpdatePushChallengePayload(updateChallengePayload)?.let {
@@ -162,7 +221,16 @@ class RNTwilioVerifyModule(
 
   @ReactMethod
   fun clearLocalStorage(promise: Promise) {
+    if (!isTwilioVerifyInitialized(promise)) {
+      return
+    }
+
     twilioVerify.clearLocalStorage { promise.resolve(null) }
+  }
+
+  @ReactMethod
+  fun isAvailable(promise: Promise) {
+    promise.resolve(isTwilioVerifyInitialized())
   }
 
   private fun mapStatus(status: String?) =
@@ -263,8 +331,18 @@ class RNTwilioVerifyModule(
       factorPayload.getStringValue("identity"),
       factorPayload.getOptStringValue("pushToken"),
       factorPayload.getStringValue("accessToken"),
-      convertReadableMapToMap(factorPayload.getMap("metadata"))
+      toStringMap(factorPayload.getMap("metadata"))
     )
+
+  private fun toStringMap(readableMap: ReadableMap?): Map<String, String>? = readableMap?.let { map ->
+    val iterator = map.keySetIterator()
+    val result = mutableMapOf<String, String>()
+    while (iterator.hasNextKey()) {
+      val key = iterator.nextKey()
+      map.getString(key)?.let { value -> result[key] = value }
+    }
+    result
+  }
 
   private fun toChallengeListPayload(challengeListPayload: ReadableMap) = ChallengeListPayload(
     challengeListPayload.getStringValue("factorSid"),
@@ -274,20 +352,7 @@ class RNTwilioVerifyModule(
     challengeListPayload.getString("pageToken")
   )
 
-  private fun convertReadableMapToMap(readableMap: ReadableMap?): Map<String, String>? {
-    return readableMap?.let { map ->
-        val iterator = map.keySetIterator()
-        val result = mutableMapOf<String, String>()
-
-        while (iterator.hasNextKey()) {
-            val key = iterator.nextKey()
-            val value = map.getString(key)
-            if (value != null) {
-                result[key] = value
-            }
-        }
-
-        return result;
-    }
+  companion object {
+    const val NAME = "RNTwilioVerify"
   }
 }
