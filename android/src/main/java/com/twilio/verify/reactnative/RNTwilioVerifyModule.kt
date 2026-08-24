@@ -23,6 +23,7 @@ import com.facebook.react.bridge.ReactContextBaseJavaModule
 import com.facebook.react.bridge.ReactMethod
 import com.facebook.react.bridge.ReadableMap
 import com.twilio.verify.TwilioVerify
+import com.twilio.verify.TwilioVerifyException
 import com.twilio.verify.networking.NetworkException
 import com.twilio.verify.models.Challenge
 import com.twilio.verify.models.ChallengeDetails
@@ -363,8 +364,8 @@ class RNTwilioVerifyModule(
 
   // The SDK reports every failure as {60401}, so the caller cannot tell a rejected request from
   // one that never reached Twilio. Decompose it: a FailureResponse means Twilio answered, its
-  // absence means the request failed locally, and the cause chain names why.
-  private fun Promise.rejectWithFailureDetail(exception: Throwable) {
+  // absence means the request failed before a response, and the cause chain names why.
+  private fun Promise.rejectWithFailureDetail(exception: TwilioVerifyException) {
     val networkException = exception.cause as? NetworkException
     val failureResponse = networkException?.failureResponse
     val detail = Arguments.createMap().apply {
@@ -376,9 +377,9 @@ class RNTwilioVerifyModule(
         }
       } else {
         val failure = networkException?.cause ?: exception.cause
-        putString("transportFailure", failure?.javaClass?.name)
-        putString("transportFailureMessage", failure?.message?.take(FAILURE_MESSAGE_MAX_LENGTH))
-        putString("transportFailureChain", causeChain(failure))
+        putString("failureClass", failure?.javaClass?.name)
+        putString("failureMessage", failure?.message?.take(FAILURE_MESSAGE_MAX_LENGTH))
+        putString("failureChain", causeChain(failure))
       }
     }
     reject(TWILIO_VERIFY_ERROR, exception.message, exception, detail)

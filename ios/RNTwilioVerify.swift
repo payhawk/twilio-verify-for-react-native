@@ -20,6 +20,7 @@
 import TwilioVerifySDK
 
 private let failureMessageMaxLength = 300
+private let causeChainMaxDepth = 5
 
 @objc(RNTwilioVerify)
 class RNTwilioVerify: NSObject {
@@ -309,6 +310,8 @@ private extension RNTwilioVerify {
     // means the request failed locally, and the underlying error names why.
     func failureDetail(_ error: TwilioVerifyError) -> NSError {
         var detail: [String: Any] = [:]
+        // `var` is forced here, not a style choice: FailureResponse.apiError is a lazy var, so
+        // binding it with `let` makes the access a mutation of an immutable value.
         if let networkError = error.originalError as? NetworkError,
            case .failureStatusCode(var failureResponse) = networkError {
             detail["httpStatus"] = failureResponse.statusCode
@@ -318,11 +321,26 @@ private extension RNTwilioVerify {
             }
         } else {
             let failure = error.originalError as NSError
-            detail["transportFailure"] = String(reflecting: type(of: error.originalError))
-            detail["transportFailureMessage"] = String(failure.localizedDescription.prefix(failureMessageMaxLength))
-            detail["transportFailureChain"] = "\(failure.domain)#\(failure.code)"
+            detail["failureClass"] = String(reflecting: type(of: error.originalError))
+            detail["failureMessage"] = String(failure.localizedDescription.prefix(failureMessageMaxLength))
+            detail["failureChain"] = failureChain(failure)
         }
         detail[NSUnderlyingErrorKey] = error.originalError as NSError
         return NSError(domain: "RNTwilioVerify", code: error.code, userInfo: detail)
+    }
+
+    // Outermost failure first, joined the same way as the Android cause chain, so a consumer
+    // reads one field the same way on both platforms. Each link identifies one underlying
+    // error, which is what makes a nested TLS or connection failure visible rather than
+    // collapsed into whatever the outermost wrapper happened to be.
+    func failureChain(_ error: NSError) -> String {
+        var links: [String] = []
+        var current: NSError? = error
+        while let link = current, links.count < causeChainMaxDepth {
+            links.append("\(link.domain)#\(link.code)")
+            let next = link.userInfo[NSUnderlyingErrorKey] as? NSError
+            current = next === link ? nil : next
+        }
+        return links.joined(separator: " < ")
     }
 }

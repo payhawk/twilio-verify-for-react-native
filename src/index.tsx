@@ -15,6 +15,7 @@ export { FactorStatus } from './models/Factor';
 export type { Challenge, ChallengeDetails, Detail } from './models/Challenge';
 export { ChallengeStatus } from './models/Challenge';
 export type { ChallengeList, Metadata } from './models/ChallengeList';
+export type { FailureDetail } from './models/FailureDetail';
 export { PushFactorPayload } from './models/PushFactorPayload';
 export { VerifyPushFactorPayload } from './models/VerifyPushFactorPayload';
 export { UpdatePushFactorPayload } from './models/UpdatePushFactorPayload';

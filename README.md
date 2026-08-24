@@ -257,7 +257,42 @@ yarn example android
 | Initialization | TWILIO_INIT_ERROR   | (Android) Exception while initializing Twilio Verify, SDK instance will not be available to use                                                     |
 | Initialization | INIT_ERROR          | (iOS) Failed to build the TwilioVerify SDK instance, typically due to Keychain access issues. The error message includes details from the native SDK |
 | Configuration  | ALREADY_INITIALIZED | `configure()` was called after the SDK was already initialized. It must be called before any other SDK method                                       |
+| SDK call       | TWILIO_VERIFY_ERROR | A Verify SDK call failed. The rejection carries a `FailureDetail` on `userInfo` — see below                                                          |
 
 [Android](https://github.com/twilio/twilio-verify-android#errors)
 
 [iOS](https://github.com/twilio/twilio-verify-ios#errors)
+
+### Diagnosing a failed SDK call
+
+The native SDKs report every failure with a single error code, so the message alone cannot tell
+you whether Twilio answered and refused the request or was never reached. Rejections from SDK
+calls therefore carry a [`FailureDetail`](src/models/FailureDetail.ts) on `userInfo`, where
+**exactly one of two field groups is populated, and which one is the answer**:
+
+| Group | Fields | Meaning |
+| ----- | ------ | ------- |
+| Twilio answered | `httpStatus`, `apiErrorCode`, `apiErrorMessage` | The request reached Twilio and was refused. `apiErrorCode` maps to the [Verify error reference](https://www.twilio.com/docs/api/errors) |
+| Twilio not reached | `failureClass`, `failureMessage`, `failureChain` | The call failed before a response — DNS, TLS, connection, or a local error |
+
+```ts
+try {
+  await TwilioVerify.createFactor(payload);
+} catch (error) {
+  const detail: FailureDetail = error.userInfo ?? {};
+
+  if (detail.httpStatus !== undefined) {
+    // Twilio refused it: detail.apiErrorCode says why.
+  } else {
+    // Twilio was never reached: detail.failureChain names the nested cause,
+    // e.g. "SSLHandshakeException < CertificateException".
+  }
+}
+```
+
+`failureChain` lists nested failures outermost first, joined by ` < `. The ordering and separator
+are the same on both platforms; the link format is not, because the platforms identify errors
+differently — fully qualified class names on Android, `domain#code` on iOS.
+
+No request or response body, headers, or credentials are included, and free-text fields are
+truncated.
