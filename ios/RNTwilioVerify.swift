@@ -19,6 +19,7 @@
 
 import TwilioVerifySDK
 
+private let twilioVerifyError = "TWILIO_VERIFY_ERROR"
 private let failureMessageMaxLength = 300
 private let causeChainMaxDepth = 5
 
@@ -66,7 +67,7 @@ class RNTwilioVerify: NSObject {
             case FactorType.push.rawValue:
                 verify.createFactor(withPayload: toPushFactorPayload(factorPayload: factorPayload),
                                     success: { resolve(self.toReadableMap(factor: $0)) },
-                                    failure: { reject("\($0.code)", $0.errorDescription, self.failureDetail($0)) })
+                                    failure: rejectingFailure(reject))
             default:
                 reject(nil, "Invalid factor payload", nil)
             }
@@ -83,7 +84,7 @@ class RNTwilioVerify: NSObject {
             case FactorType.push.rawValue:
                 verify.verifyFactor(withPayload: VerifyPushFactorPayload(sid: verifyFactorPayload["sid"]!),
                                     success: { resolve(self.toReadableMap(factor: $0)) },
-                                    failure: { reject("\($0.code)", $0.errorDescription, self.failureDetail($0)) })
+                                    failure: rejectingFailure(reject))
             default:
                 reject(nil, "Invalid verify factor payload", nil)
             }
@@ -101,7 +102,7 @@ class RNTwilioVerify: NSObject {
                 verify.updateFactor(withPayload: UpdatePushFactorPayload(sid: updateFactorPayload["sid"]!,
                                                                          pushToken: updateFactorPayload["pushToken"]),
                                     success: { resolve(self.toReadableMap(factor: $0)) },
-                                    failure: { reject("\($0.code)", $0.errorDescription, self.failureDetail($0)) })
+                                    failure: rejectingFailure(reject))
             default:
                 reject(nil, "Invalid verify factor payload", nil)
             }
@@ -115,7 +116,7 @@ class RNTwilioVerify: NSObject {
         do {
             let verify = try getOrBuildTwilioVerify()
             verify.getAllFactors(success: { resolve(self.toReadableFactorArray(factors: $0)) },
-                                failure: { reject("\($0.code)", $0.errorDescription, self.failureDetail($0)) })
+                                failure: rejectingFailure(reject))
         } catch {
             reject("INIT_ERROR", "Failed to initialize TwilioVerify: \(error.localizedDescription)", error)
         }
@@ -127,7 +128,7 @@ class RNTwilioVerify: NSObject {
             let verify = try getOrBuildTwilioVerify()
             verify.deleteFactor(withSid: sid,
                                 success: { resolve(nil) },
-                                failure: { reject("\($0.code)", $0.errorDescription, self.failureDetail($0)) })
+                                failure: rejectingFailure(reject))
         } catch {
             reject("INIT_ERROR", "Failed to initialize TwilioVerify: \(error.localizedDescription)", error)
         }
@@ -139,7 +140,7 @@ class RNTwilioVerify: NSObject {
             let verify = try getOrBuildTwilioVerify()
             verify.getChallenge(challengeSid: challengeSid, factorSid: factorSid,
                                 success: { resolve(self.toReadableMap(challenge: $0)) },
-                                failure: { reject("\($0.code)", $0.errorDescription, self.failureDetail($0)) })
+                                failure: rejectingFailure(reject))
         } catch {
             reject("INIT_ERROR", "Failed to initialize TwilioVerify: \(error.localizedDescription)", error)
         }
@@ -151,7 +152,7 @@ class RNTwilioVerify: NSObject {
             let verify = try getOrBuildTwilioVerify()
             verify.getAllChallenges(withPayload: toChallengeListPayload(challengeListPayload: challengeListPayload),
                                    success: { resolve(self.toReadableMap(challengeList: $0)) },
-                                   failure: { reject("\($0.code)", $0.errorDescription, self.failureDetail($0)) })
+                                   failure: rejectingFailure(reject))
         } catch {
             reject("INIT_ERROR", "Failed to initialize TwilioVerify: \(error.localizedDescription)", error)
         }
@@ -165,7 +166,7 @@ class RNTwilioVerify: NSObject {
             case FactorType.push.rawValue:
                 verify.updateChallenge(withPayload: toUpdatePushChallengePayload(updateChallengePayload: updateChallengePayload),
                                        success: { resolve(nil) },
-                                       failure: { reject("\($0.code)", $0.errorDescription, self.failureDetail($0)) })
+                                       failure: rejectingFailure(reject))
             default:
                 reject(nil, "Invalid verify factor payload", nil)
             }
@@ -305,10 +306,20 @@ private extension RNTwilioVerify {
         return nil
     }
 
+    // One place for every SDK failure callback to land, so the rejection code, message shape
+    // and detail map cannot drift apart across the eight call sites.
+    func rejectingFailure(_ reject: @escaping RCTPromiseRejectBlock) -> (TwilioVerifyError) -> Void {
+        return { error in
+            // Android puts the Verify error code in the message as "{60401} ...". Mirror that
+            // here so the numeric code survives moving `code` to the shared TWILIO_VERIFY_ERROR.
+            reject(twilioVerifyError, "{\(error.code)} \(error.errorDescription ?? "")", self.rejectionError(error))
+        }
+    }
+
     // The SDK reports every failure as {60401}, so the caller cannot tell a rejected request
     // from one that never reached Twilio. A FailureResponse means Twilio answered; its absence
-    // means the request failed locally, and the underlying error names why.
-    func failureDetail(_ error: TwilioVerifyError) -> NSError {
+    // means the request failed before a response, and the underlying error names why.
+    func rejectionError(_ error: TwilioVerifyError) -> NSError {
         var detail: [String: Any] = [:]
         // `var` is forced here, not a style choice: FailureResponse.apiError is a lazy var, so
         // binding it with `let` makes the access a mutation of an immutable value.

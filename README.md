@@ -257,7 +257,7 @@ yarn example android
 | Initialization | TWILIO_INIT_ERROR   | (Android) Exception while initializing Twilio Verify, SDK instance will not be available to use                                                     |
 | Initialization | INIT_ERROR          | (iOS) Failed to build the TwilioVerify SDK instance, typically due to Keychain access issues. The error message includes details from the native SDK |
 | Configuration  | ALREADY_INITIALIZED | `configure()` was called after the SDK was already initialized. It must be called before any other SDK method                                       |
-| SDK call       | TWILIO_VERIFY_ERROR | A Verify SDK call failed. The rejection carries a `FailureDetail` on `userInfo` — see below                                                          |
+| SDK call       | TWILIO_VERIFY_ERROR | A Verify SDK call failed, on either platform. The message carries the Verify error code as `{60401} …`, and the rejection carries a `FailureDetail` on `userInfo` — see below |
 
 [Android](https://github.com/twilio/twilio-verify-android#errors)
 
