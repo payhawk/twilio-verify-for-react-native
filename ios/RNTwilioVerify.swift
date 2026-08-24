@@ -19,6 +19,8 @@
 
 import TwilioVerifySDK
 
+private let failureMessageMaxLength = 300
+
 @objc(RNTwilioVerify)
 class RNTwilioVerify: NSObject {
 
@@ -63,7 +65,7 @@ class RNTwilioVerify: NSObject {
             case FactorType.push.rawValue:
                 verify.createFactor(withPayload: toPushFactorPayload(factorPayload: factorPayload),
                                     success: { resolve(self.toReadableMap(factor: $0)) },
-                                    failure: { reject("\($0.code)", $0.errorDescription, $0) })
+                                    failure: { reject("\($0.code)", $0.errorDescription, self.failureDetail($0)) })
             default:
                 reject(nil, "Invalid factor payload", nil)
             }
@@ -80,7 +82,7 @@ class RNTwilioVerify: NSObject {
             case FactorType.push.rawValue:
                 verify.verifyFactor(withPayload: VerifyPushFactorPayload(sid: verifyFactorPayload["sid"]!),
                                     success: { resolve(self.toReadableMap(factor: $0)) },
-                                    failure: { reject("\($0.code)", $0.errorDescription, $0) })
+                                    failure: { reject("\($0.code)", $0.errorDescription, self.failureDetail($0)) })
             default:
                 reject(nil, "Invalid verify factor payload", nil)
             }
@@ -98,7 +100,7 @@ class RNTwilioVerify: NSObject {
                 verify.updateFactor(withPayload: UpdatePushFactorPayload(sid: updateFactorPayload["sid"]!,
                                                                          pushToken: updateFactorPayload["pushToken"]),
                                     success: { resolve(self.toReadableMap(factor: $0)) },
-                                    failure: { reject("\($0.code)", $0.errorDescription, $0) })
+                                    failure: { reject("\($0.code)", $0.errorDescription, self.failureDetail($0)) })
             default:
                 reject(nil, "Invalid verify factor payload", nil)
             }
@@ -112,7 +114,7 @@ class RNTwilioVerify: NSObject {
         do {
             let verify = try getOrBuildTwilioVerify()
             verify.getAllFactors(success: { resolve(self.toReadableFactorArray(factors: $0)) },
-                                failure: { reject("\($0.code)", $0.errorDescription, $0) })
+                                failure: { reject("\($0.code)", $0.errorDescription, self.failureDetail($0)) })
         } catch {
             reject("INIT_ERROR", "Failed to initialize TwilioVerify: \(error.localizedDescription)", error)
         }
@@ -124,7 +126,7 @@ class RNTwilioVerify: NSObject {
             let verify = try getOrBuildTwilioVerify()
             verify.deleteFactor(withSid: sid,
                                 success: { resolve(nil) },
-                                failure: { reject("\($0.code)", $0.errorDescription, $0) })
+                                failure: { reject("\($0.code)", $0.errorDescription, self.failureDetail($0)) })
         } catch {
             reject("INIT_ERROR", "Failed to initialize TwilioVerify: \(error.localizedDescription)", error)
         }
@@ -136,7 +138,7 @@ class RNTwilioVerify: NSObject {
             let verify = try getOrBuildTwilioVerify()
             verify.getChallenge(challengeSid: challengeSid, factorSid: factorSid,
                                 success: { resolve(self.toReadableMap(challenge: $0)) },
-                                failure: { reject("\($0.code)", $0.errorDescription, $0) })
+                                failure: { reject("\($0.code)", $0.errorDescription, self.failureDetail($0)) })
         } catch {
             reject("INIT_ERROR", "Failed to initialize TwilioVerify: \(error.localizedDescription)", error)
         }
@@ -148,7 +150,7 @@ class RNTwilioVerify: NSObject {
             let verify = try getOrBuildTwilioVerify()
             verify.getAllChallenges(withPayload: toChallengeListPayload(challengeListPayload: challengeListPayload),
                                    success: { resolve(self.toReadableMap(challengeList: $0)) },
-                                   failure: { reject("\($0.code)", $0.errorDescription, $0) })
+                                   failure: { reject("\($0.code)", $0.errorDescription, self.failureDetail($0)) })
         } catch {
             reject("INIT_ERROR", "Failed to initialize TwilioVerify: \(error.localizedDescription)", error)
         }
@@ -162,7 +164,7 @@ class RNTwilioVerify: NSObject {
             case FactorType.push.rawValue:
                 verify.updateChallenge(withPayload: toUpdatePushChallengePayload(updateChallengePayload: updateChallengePayload),
                                        success: { resolve(nil) },
-                                       failure: { reject("\($0.code)", $0.errorDescription, $0) })
+                                       failure: { reject("\($0.code)", $0.errorDescription, self.failureDetail($0)) })
             default:
                 reject(nil, "Invalid verify factor payload", nil)
             }
@@ -300,5 +302,27 @@ private extension RNTwilioVerify {
             return ChallengeListOrder(rawValue: order)
         }
         return nil
+    }
+
+    // The SDK reports every failure as {60401}, so the caller cannot tell a rejected request
+    // from one that never reached Twilio. A FailureResponse means Twilio answered; its absence
+    // means the request failed locally, and the underlying error names why.
+    func failureDetail(_ error: TwilioVerifyError) -> NSError {
+        var detail: [String: Any] = [:]
+        if let networkError = error.originalError as? NetworkError,
+           case .failureStatusCode(var failureResponse) = networkError {
+            detail["httpStatus"] = failureResponse.statusCode
+            if let apiError = failureResponse.apiError {
+                detail["apiErrorCode"] = String(apiError.code)
+                detail["apiErrorMessage"] = String(apiError.message.prefix(failureMessageMaxLength))
+            }
+        } else {
+            let failure = error.originalError as NSError
+            detail["transportFailure"] = String(reflecting: type(of: error.originalError))
+            detail["transportFailureMessage"] = String(failure.localizedDescription.prefix(failureMessageMaxLength))
+            detail["transportFailureChain"] = "\(failure.domain)#\(failure.code)"
+        }
+        detail[NSUnderlyingErrorKey] = error.originalError as NSError
+        return NSError(domain: "RNTwilioVerify", code: error.code, userInfo: detail)
     }
 }

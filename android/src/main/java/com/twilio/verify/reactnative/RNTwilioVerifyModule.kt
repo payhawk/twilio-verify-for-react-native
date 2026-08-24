@@ -23,6 +23,7 @@ import com.facebook.react.bridge.ReactContextBaseJavaModule
 import com.facebook.react.bridge.ReactMethod
 import com.facebook.react.bridge.ReadableMap
 import com.twilio.verify.TwilioVerify
+import com.twilio.verify.networking.NetworkException
 import com.twilio.verify.models.Challenge
 import com.twilio.verify.models.ChallengeDetails
 import com.twilio.verify.models.ChallengeList
@@ -42,6 +43,10 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import java.util.TimeZone
+
+private const val TWILIO_VERIFY_ERROR = "TWILIO_VERIFY_ERROR"
+private const val FAILURE_MESSAGE_MAX_LENGTH = 300
+private const val CAUSE_CHAIN_MAX_DEPTH = 5
 
 private const val dateFormatUTC = "yyyy-MM-dd'T'HH:mm:ss'Z'"
 private val dateFormatterUTC =
@@ -97,7 +102,7 @@ class RNTwilioVerifyModule(
         twilioVerify.createFactor(
           toPushFactorPayload(factorPayload),
           { promise.resolve(toReadableMap(it)) },
-          { promise.reject(it) })
+          { promise.rejectWithFailureDetail(it) })
       else -> promise.reject(IllegalArgumentException("Invalid factor payload"))
     }
   }
@@ -112,7 +117,7 @@ class RNTwilioVerifyModule(
       FactorType.PUSH -> twilioVerify.verifyFactor(
         VerifyPushFactorPayload(verifyFactorPayload.getStringValue("sid")),
         { promise.resolve(toReadableMap(it)) },
-        { promise.reject(it) })
+        { promise.rejectWithFailureDetail(it) })
       else -> promise.reject(IllegalArgumentException("Invalid verify factor payload"))
     }
   }
@@ -132,7 +137,7 @@ class RNTwilioVerifyModule(
           UpdatePushFactorPayload(
             updateFactorPayload.getStringValue("sid"),
             updateFactorPayload.getOptStringValue("pushToken")
-          ), { promise.resolve(toReadableMap(it)) }, { promise.reject(it) })
+          ), { promise.resolve(toReadableMap(it)) }, { promise.rejectWithFailureDetail(it) })
       else -> promise.reject(IllegalArgumentException("Invalid update factor payload"))
     }
   }
@@ -145,7 +150,7 @@ class RNTwilioVerifyModule(
 
     twilioVerify.getAllFactors(
       { promise.resolve(toReadableFactorArray(it)) },
-      { promise.reject(it) })
+      { promise.rejectWithFailureDetail(it) })
   }
 
   @ReactMethod
@@ -157,7 +162,7 @@ class RNTwilioVerifyModule(
     twilioVerify.deleteFactor(
       sid,
       { promise.resolve(null) },
-      { promise.reject(it) })
+      { promise.rejectWithFailureDetail(it) })
   }
 
   @ReactMethod
@@ -174,7 +179,7 @@ class RNTwilioVerifyModule(
       challengeSid,
       factorSid,
       { promise.resolve(toReadableMap(it)) },
-      { promise.reject(it) })
+      { promise.rejectWithFailureDetail(it) })
   }
 
   @ReactMethod
@@ -189,7 +194,7 @@ class RNTwilioVerifyModule(
     twilioVerify.getAllChallenges(
       toChallengeListPayload(challengeListPayload),
       { promise.resolve(toReadableMap(it)) },
-      { promise.reject(it) })
+      { promise.rejectWithFailureDetail(it) })
   }
 
   @ReactMethod
@@ -204,7 +209,7 @@ class RNTwilioVerifyModule(
           twilioVerify.updateChallenge(
             it,
             { promise.resolve(null) },
-            { exception -> promise.reject(exception) })
+            { exception -> promise.rejectWithFailureDetail(exception) })
         }
       else -> promise.reject(IllegalArgumentException("Invalid update challenge payload"))
     }
@@ -354,5 +359,42 @@ class RNTwilioVerifyModule(
 
   companion object {
     const val NAME = "RNTwilioVerify"
+  }
+
+  // The SDK reports every failure as {60401}, so the caller cannot tell a rejected request from
+  // one that never reached Twilio. Decompose it: a FailureResponse means Twilio answered, its
+  // absence means the request failed locally, and the cause chain names why.
+  private fun Promise.rejectWithFailureDetail(exception: Throwable) {
+    val networkException = exception.cause as? NetworkException
+    val failureResponse = networkException?.failureResponse
+    val detail = Arguments.createMap().apply {
+      if (failureResponse != null) {
+        putInt("httpStatus", failureResponse.statusCode)
+        failureResponse.apiError?.let { apiError ->
+          putString("apiErrorCode", apiError.code)
+          putString("apiErrorMessage", apiError.message.take(FAILURE_MESSAGE_MAX_LENGTH))
+        }
+      } else {
+        val failure = networkException?.cause ?: exception.cause
+        putString("transportFailure", failure?.javaClass?.name)
+        putString("transportFailureMessage", failure?.message?.take(FAILURE_MESSAGE_MAX_LENGTH))
+        putString("transportFailureChain", causeChain(failure))
+      }
+    }
+    reject(TWILIO_VERIFY_ERROR, exception.message, exception, detail)
+  }
+
+  private fun causeChain(throwable: Throwable?): String? {
+    if (throwable == null) {
+      return null
+    }
+    val names = mutableListOf<String>()
+    var current: Throwable? = throwable
+    while (current != null && names.size < CAUSE_CHAIN_MAX_DEPTH) {
+      names.add(current.javaClass.simpleName)
+      val next = current.cause
+      current = if (next === current) null else next
+    }
+    return names.joinToString(" < ")
   }
 }
