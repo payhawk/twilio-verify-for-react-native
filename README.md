@@ -292,7 +292,11 @@ try {
 
 `failureChain` lists nested failures outermost first, joined by ` < `. The ordering and separator
 are the same on both platforms; the link format is not, because the platforms identify errors
-differently — fully qualified class names on Android, `domain#code` on iOS.
+differently — simple class names on Android, `domain#code` on iOS.
+
+Note the chain links are deliberately shorter than `failureClass`, which is the fully qualified
+class name on Android. The chain is meant to be read at a glance as one line, while
+`failureClass` identifies the outermost failure precisely.
 
 No request or response body, headers, or credentials are included, and free-text fields are
 truncated.
